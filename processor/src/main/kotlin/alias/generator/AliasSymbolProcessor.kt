@@ -81,11 +81,3 @@ private val KSDeclaration.name: String
     get() = simpleName.asString()
 private val KSDeclaration.fullName: String
     get() = "${packageName.asString()}.$name"
-
-private const val kotlinSourcefileExtension = ".kt"
-
-private val KSDeclaration.fileName: String
-    get() = when (this) {
-        is KSPropertyDeclaration -> "${packageName.asString()}/Properties"
-        else -> qualifiedName?.asString() ?: error("unreachable statement")
-    }.replace(".", "/") + kotlinSourcefileExtension

@@ -1,13 +1,7 @@
-@file:OptIn(KspExperimental::class)
-
 package alias.generator
 
-import com.google.devtools.ksp.KspExperimental
 import com.google.devtools.ksp.processing.*
-import com.google.devtools.ksp.symbol.KSAnnotated
-import com.google.devtools.ksp.symbol.KSDeclaration
-import com.google.devtools.ksp.symbol.KSFile
-import com.google.devtools.ksp.symbol.KSPropertyDeclaration
+import com.google.devtools.ksp.symbol.*
 import java.io.OutputStream
 
 internal class AliasSymbolProcessor(
@@ -40,9 +34,10 @@ internal class AliasSymbolProcessor(
         declarations.forEach { declaration ->
             logger.info("visit symbol ${declaration.qualifiedName?.getQualifier()} of type ${declaration::class.simpleName}")
 
+            outputStream += "@Deprecated(\"use new package $sourcePackage instead\")\n"
             outputStream += when (declaration) {
-                is KSPropertyDeclaration -> "val ${declaration.name} = ${declaration.fullName}"
-                else -> "typealias ${declaration.name} = ${declaration.fullName}"
+                is KSPropertyDeclaration -> declaration.toPropertyAlias()
+                else -> declaration.toTypeAlias()
             }
 
             outputStream += "\n"
@@ -50,6 +45,18 @@ internal class AliasSymbolProcessor(
 
         outputStream
 
+    }
+
+    private fun KSDeclaration.toTypeAlias() = "typealias $name = $fullName"
+
+    private fun KSPropertyDeclaration.toPropertyAlias(): String {
+        val hasGetterOrSetter = setter != null || getter != null
+        val leftDeclaration = "$declaratorKeyword $receiver$name"
+        val rightDeclaration = fullName
+        return when  {
+            !hasGetterOrSetter -> "$leftDeclaration = $fullName"
+            else -> leftDeclaration + (getter?.generate(rightDeclaration) ?: "") + (setter?.generate(rightDeclaration) ?: "")
+        }
     }
 
     private fun Sequence<KSFile>.filterFromSourcePackage() =
@@ -72,12 +79,24 @@ internal class AliasSymbolProcessor(
     }
 
 }
+private fun KSPropertyGetter.generate(value: String): String {
+    return "\n get() = $value"
+}
+
+private fun KSPropertySetter.generate(value: String): String {
+    return "\n set(value) { $value = value }"
+}
 
 private operator fun OutputStream.plusAssign(str: String) {
     this.write(str.toByteArray())
 }
 
+private val KSPropertyDeclaration.declaratorKeyword: String
+    get() = if (isMutable) "var" else "val"
 private val KSDeclaration.name: String
     get() = simpleName.asString()
 private val KSDeclaration.fullName: String
     get() = "${packageName.asString()}.$name"
+
+private val KSPropertyDeclaration.receiver: String
+    get() = extensionReceiver?.element?.toString()?.plus(".") ?: ""
